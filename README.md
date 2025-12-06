@@ -292,6 +292,10 @@ Your AWS credentials are stored with **maximum security** using industry-standar
 - If you lose your `SECRET_KEY`, all stored S3 connections will become permanently unreadable.
 - **NEVER commit your `.env` file** to version control.
 
+## Deployment
+
+For detailed production deployment instructions, including setting up SSL with AWS ACM and EC2, please refer to [DEPLOYMENT.md](DEPLOYMENT.md).
+
 ## Troubleshooting
 
 ### Common Issues

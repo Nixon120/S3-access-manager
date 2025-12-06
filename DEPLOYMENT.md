@@ -1,312 +1,144 @@
-# Production Deployment Guide
-
-## AWS Infrastructure Setup
-
-### Prerequisites
-- AWS Account with appropriate permissions
-- Terraform installed
-- Docker installed
-- Domain name (optional, for HTTPS)
-
-### 1. Database Setup (RDS PostgreSQL)
-
-```bash
-cd terraform/
-terraform init
-terraform plan
-terraform apply
-```
-
-The Terraform configuration will create:
-- RDS PostgreSQL instance
-- VPC with public/private subnets
-- Security groups
-- IAM roles for ECS
-- Application Load Balancer
-- ECS cluster
-
-### 2. Configure Secrets
-
-Use AWS Secrets Manager or SSM Parameter Store:
-
-```bash
-aws secretsmanager create-secret \
-  --name s3-manager/jwt-secret \
-  --secret-string "your-random-secret-key"
-
-aws secretsmanager create-secret \
-  --name s3-manager/database-url \
-  --secret-string "postgresql://user:pass@rds-endpoint:5432/s3manager"
-```
-
-### 3. Build and Push Docker Images
-
-```bash
-# Login to ECR
-aws ecr get-login-password --region us-east-1 | \
-  docker login --username AWS --password-stdin ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com
-
-# Build and push backend
-docker build -t s3-manager-backend ./backend
-docker tag s3-manager-backend:latest ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/s3-manager-backend:latest
-docker push ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/s3-manager-backend:latest
-
-# Build and push frontend
-docker build -t s3-manager-frontend ./frontend
-docker tag s3-manager-frontend:latest ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/s3-manager-frontend:latest
-docker push ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/s3-manager-frontend:latest
-```
-
-### 4. Deploy to ECS
-
-Update ECS task definitions with your ECR image URIs and deploy:
-
-```bash
-aws ecs update-service \
-  --cluster s3-manager-cluster \
-  --service s3-manager-backend \
-  --force-new-deployment
-
-aws ecs update-service \
-  --cluster s3-manager-cluster \
-  --service s3-manager-frontend \
-  --force-new-deployment
-```
-
-### 5. Create Initial Admin User
-
-Connect to the ECS task:
-
-```bash
-aws ecs execute-command \
-  --cluster s3-manager-cluster \
-  --task TASK_ID \
-  --container backend \
-  --interactive \
-  --command "/bin/bash"
-
-# Inside the container
-python scripts/create_admin.py
-```
-
-### 6. Configure SSL/TLS
-
-Use AWS Certificate Manager:
-
-```bash
-aws acm request-certificate \
-  --domain-name s3manager.yourdomain.com \
-  --validation-method DNS
-```
-
-Update ALB listener to use HTTPS (port 443) with the certificate.
-
-## IAM Roles Anywhere Setup
-
-For certificate-based authentication (recommended for partner access):
-
-1. Create a Certificate Authority in AWS Certificate Manager Private CA
-
-2. Create IAM role with S3 permissions:
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "s3:GetObject",
-        "s3:PutObject",
-        "s3:DeleteObject",
-        "s3:ListBucket"
-      ],
-      "Resource": [
-        "arn:aws:s3:::your-bucket/*",
-        "arn:aws:s3:::your-bucket"
-      ]
-    }
-  ]
-}
-```
-
-3. Create trust policy for IAM Roles Anywhere:
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Service": "rolesanywhere.amazonaws.com"
-      },
-      "Action": [
-        "sts:AssumeRole",
-        "sts:TagSession",
-        "sts:SetSourceIdentity"
-      ]
-    }
-  ]
-}
-```
-
-4. Configure the application to use IAM Roles Anywhere:
-
-```bash
-export AWS_ROLE_ARN=arn:aws:iam::ACCOUNT:role/S3AccessManagerRole
-```
-
-## Monitoring and Logging
-
-### CloudWatch Logs
-
-All application logs are sent to CloudWatch Logs:
-- `/aws/ecs/s3-manager-backend` - Backend application logs
-- `/aws/ecs/s3-manager-frontend` - Frontend application logs
-
-### CloudWatch Alarms
-
-Set up alarms for:
-- ECS service CPU/Memory usage
-- RDS database connections
-- ALB 5xx errors
-- Failed authentication attempts
-
-Example alarm:
-
-```bash
-aws cloudwatch put-metric-alarm \
-  --alarm-name s3-manager-high-cpu \
-  --alarm-description "ECS CPU usage > 80%" \
-  --metric-name CPUUtilization \
-  --namespace AWS/ECS \
-  --statistic Average \
-  --period 300 \
-  --threshold 80 \
-  --comparison-operator GreaterThanThreshold \
-  --evaluation-periods 2
-```
-
-## Backup and Disaster Recovery
-
-### Database Backups
-
-RDS automated backups are enabled by default (7-day retention).
-
-For manual backups:
-
-```bash
-aws rds create-db-snapshot \
-  --db-instance-identifier s3-manager-db \
-  --db-snapshot-identifier s3-manager-backup-$(date +%Y%m%d)
-```
-
-### Application State
-
-The application is stateless. All state is in the database and S3.
-
-## Security Best Practices
-
-1. **Network Security**
-   - Use VPC with private subnets for database
-   - Restrict security groups to necessary ports
-   - Use AWS WAF for ALB
-
-2. **Encryption**
-   - Enable RDS encryption at rest
-   - Use KMS for S3 bucket encryption
-   - Force TLS 1.2+ on ALB
-
-3. **IAM**
-   - Use least privilege principle
-   - Rotate IAM credentials regularly
-   - Enable MFA for admin users
-
-4. **Audit**
-   - Enable CloudTrail for all API calls
-   - Review audit logs regularly
-   - Set up alerts for suspicious activity
-
-## Scaling
-
-### Horizontal Scaling
-
-Update ECS service desired count:
-
-```bash
-aws ecs update-service \
-  --cluster s3-manager-cluster \
-  --service s3-manager-backend \
-  --desired-count 3
-```
-
-### Auto Scaling
-
-Configure ECS auto scaling based on CPU/Memory:
-
-```bash
-aws application-autoscaling register-scalable-target \
-  --service-namespace ecs \
-  --scalable-dimension ecs:service:DesiredCount \
-  --resource-id service/s3-manager-cluster/s3-manager-backend \
-  --min-capacity 2 \
-  --max-capacity 10
-```
-
-## Troubleshooting
-
-### Check ECS task logs
-
-```bash
-aws logs tail /aws/ecs/s3-manager-backend --follow
-```
-
-### Check RDS connections
-
-```bash
-aws rds describe-db-instances \
-  --db-instance-identifier s3-manager-db \
-  --query 'DBInstances[0].Endpoint'
-```
-
-### Test S3 access
-
-```bash
-aws s3 ls s3://your-bucket/ --profile s3-manager-role
-```
-
-## Cost Optimization
-
-1. Use t3/t4g instances for ECS
-2. Enable RDS autoscaling storage
-3. Use S3 Intelligent-Tiering
-4. Set up budget alerts
-5. Review CloudWatch Logs retention periods
-
-## Maintenance
-
-### Update application
-
-1. Build new Docker images
-2. Push to ECR
-3. Update ECS service (force new deployment)
-4. Monitor deployment in ECS console
-
-### Database migrations
-
-```bash
-# Connect to ECS task
-aws ecs execute-command --cluster s3-manager-cluster --task TASK_ID --interactive --command "/bin/bash"
-
-# Run migrations
-alembic upgrade head
-```
-
-## Support
-
-For issues:
-1. Check CloudWatch Logs
-2. Review ECS task status
-3. Verify RDS connectivity
-4. Check IAM permissions
+# Production Deployment Guide (EC2)
+
+This guide explains how to deploy the KGS S3 Manager to a single AWS EC2 instance.
+
+## Prerequisites
+1.  **AWS Account**
+2.  **EC2 Instance**: Ubuntu 22.04 LTS (t3.small or t3.medium recommended)
+3.  **Domain Name** (Optional, but recommended for SSL)
+
+## Step 1: Prepare the EC2 Instance
+
+1.  **Launch Instance**: Launch an Ubuntu 22.04 instance.
+2.  **Security Group**: Open ports:
+    *   22 (SSH) - Your IP only
+    *   80 (HTTP) - Anywhere
+    *   443 (HTTPS) - Anywhere (if using SSL)
+
+3.  **SSH into the instance**:
+    ```bash
+    ssh -i key.pem ubuntu@your-ec2-ip
+    ```
+
+4.  **Install Docker & Docker Compose**:
+    ```bash
+    # Update packages
+    sudo apt-get update
+    sudo apt-get install -y ca-certificates curl gnupg
+
+    # Install Docker
+    sudo install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    sudo chmod a+r /etc/apt/keyrings/docker.gpg
+
+    echo \
+      "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+      "$(. /etc/os-release && echo "$VERSION_CODENAME")" stable" | \
+      sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+    sudo apt-get update
+    sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+    # Add user to docker group (avoid sudo)
+    sudo usermod -aG docker $USER
+    # Log out and back in for this to take effect
+    exit
+    ```
+
+## Step 2: Deploy the Application
+
+1.  **Clone the Repository** (or copy files):
+    ```bash
+    git clone <your-repo-url> app
+    cd app
+    ```
+
+2.  **Create Production Environment Config**:
+    Create a `.env` file with your production secrets.
+    ```bash
+    nano .env
+    ```
+    Paste your `.env` content (ensure `DEBUG=False` and `ENVIRONMENT=production`).
+
+3.  **Start the Application**:
+    Use the production compose file.
+    ```bash
+    docker compose -f docker-compose.prod.yml up -d --build
+    ```
+
+4.  **Verify**:
+    Visit `http://your-ec2-ip` in your browser. You should see the KGS Login page.
+
+## Step 3: Database Backups (Crucial!)
+
+Since the database lives on the EC2 instance, you MUST back it up.
+
+1.  **Create a backup script** `backup.sh`:
+    ```bash
+    #!/bin/bash
+    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    docker compose -f /home/ubuntu/app/docker-compose.prod.yml exec -T db pg_dump -U s3manager s3manager > /home/ubuntu/backups/db_backup_$TIMESTAMP.sql
+    # Optional: Upload to S3
+    # aws s3 cp /home/ubuntu/backups/db_backup_$TIMESTAMP.sql s3://your-backup-bucket/
+    ```
+
+2.  **Add to Crontab**:
+    ```bash
+    crontab -e
+    # Run every day at 2 AM
+    0 2 * * * /bin/bash /home/ubuntu/app/backup.sh
+    ```
+
+## Step 4: SSL with AWS ACM (Recommended)
+
+Since you have a certificate in **AWS Certificate Manager (ACM)**, you **cannot** install it directly on the EC2 instance. You must use an **Application Load Balancer (ALB)** to handle the SSL encryption.
+
+### Architecture
+`User (HTTPS)` -> `AWS ALB (SSL Termination)` -> `EC2 Instance (HTTP port 80)`
+
+### Configuration Steps
+
+1.  **Create a Target Group**:
+    *   Go to EC2 Console -> **Target Groups** -> **Create target group**.
+    *   Choose **Instances**.
+    *   **Protocol**: HTTP, **Port**: 80.
+    *   **VPC**: Select your VPC.
+    *   **Health Check**: Path `/health` (or `/`).
+    *   **Register Targets**: Select your EC2 instance and click "Include as pending below".
+    *   Click **Create**.
+
+2.  **Create an Application Load Balancer (ALB)**:
+    *   Go to EC2 Console -> **Load Balancers** -> **Create Load Balancer**.
+    *   Select **Application Load Balancer**.
+    *   **Scheme**: Internet-facing.
+    *   **Network**: Select your VPC and at least two subnets (availability zones).
+    *   **Security Group**: Create a new SG for the ALB (e.g., `alb-sg`) allowing:
+        *   Inbound HTTP (80) from `0.0.0.0/0`
+        *   Inbound HTTPS (443) from `0.0.0.0/0`
+
+3.  **Configure Listeners**:
+    *   **Listener 1 (HTTPS)**:
+        *   Protocol: HTTPS, Port: 443.
+        *   **Default Action**: Forward to your Target Group.
+        *   **Secure Listener Settings**: Select your **ACM Certificate**.
+    *   **Listener 2 (HTTP)**:
+        *   Protocol: HTTP, Port: 80.
+        *   **Default Action**: Redirect to HTTPS (Port 443).
+
+4.  **Update EC2 Security Group**:
+    *   Go to your **EC2 Instance's Security Group**.
+    *   Edit Inbound Rules.
+    *   **Remove** the rule allowing Port 80 from `0.0.0.0/0`.
+    *   **Add** a rule allowing Port 80 from **Source: Custom -> Select your ALB Security Group** (`alb-sg`).
+    *   *This ensures only the Load Balancer can talk to your app.*
+
+5.  **Update DNS (Route 53)**:
+    *   Go to Route 53.
+    *   Create an **A Record** for your domain (e.g., `app.yourdomain.com`).
+    *   Toggle **Alias** to Yes.
+    *   Route traffic to: **Alias to Application and Classic Load Balancer**.
+    *   Select your region and the ALB you just created.
+
+6.  **Verify**:
+    *   Visit `https://app.yourdomain.com`.
+    *   It should load securely with the lock icon!
