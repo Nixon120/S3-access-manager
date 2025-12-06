@@ -294,7 +294,17 @@ Your AWS credentials are stored with **maximum security** using industry-standar
 
 ## Deployment
 
-For detailed production deployment instructions, including setting up SSL with AWS ACM and EC2, please refer to [DEPLOYMENT.md](DEPLOYMENT.md).
+### Option 1: Manual EC2 Deployment
+For detailed manual instructions, see [DEPLOYMENT.md](DEPLOYMENT.md).
+
+### Option 2: AWS CloudFormation (Automated)
+You can deploy the entire stack (RDS, ALB, Auto Scaling, IAM Roles Anywhere) using the provided CloudFormation template.
+
+1.  Go to the AWS CloudFormation Console.
+2.  Create Stack -> "With new resources (standard)".
+3.  Upload `aws-cloudformation/kgs-s3-manager-stack.yaml`.
+4.  Fill in the parameters (Certificate ARN, DB Password, etc.).
+5.  Launch!
 
 ## Troubleshooting
 
