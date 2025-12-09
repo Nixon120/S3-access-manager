@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'KGS S3 Manager - Full Stack Deployment (RDS, ALB, ASG, IAM Roles Anywhere)'
+Description: 'KGS S3 Manager - Private Deployment (Existing VPC, Internal ALB)'
 
 Parameters:
   EnvironmentName:
@@ -7,120 +7,57 @@ Parameters:
     Default: production
     Description: Environment name (e.g., production, staging)
 
-  VpcCIDR:
-    Type: String
-    Default: 10.0.0.0/16
-    Description: IP range for the VPC
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: The ID of the existing VPC
+    Default: vpc-0f3618faf5b550f2c
+
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: List of at least two existing Subnets for the ALB and EC2 instances
+    Default: "subnet-01884a6010116024f,subnet-065600be09ac4f759"
 
   KeyName:
     Type: AWS::EC2::KeyPair::KeyName
-    Description: Name of an existing EC2 KeyPair for SSH access
+    Description: Name of an existing EC2 KeyPair for SSH access (Create this in EC2 Console first!)
 
   CertificateArn:
     Type: String
-    Description: (Optional) ARN of the ACM Certificate. Leave empty if you don't have a domain yet (will use HTTP only).
+    Description: (Optional) ARN of the ACM Certificate. Leave empty for HTTP only.
     Default: ""
 
   DBPassword:
     Type: String
     NoEcho: true
     Description: Password for the RDS PostgreSQL database
+    Default: Welcome@123
 
   RepoUrl:
     Type: String
     Default: https://github.com/Nixon120/S3-access-manager.git
-    Description: Git repository URL to clone the application from
+    Description: Git repository URL (Use https://user:token@github.com/... for private repos)
 
   TrustAnchorCertData:
     Type: String
-    Description: PEM encoded certificate data for the IAM Roles Anywhere Trust Anchor (The CA Certificate)
+    Description: PEM encoded certificate data for the IAM Roles Anywhere Trust Anchor
 
 Conditions:
   HasCertificate: !Not [!Equals [!Ref CertificateArn, ""]]
 
 Resources:
   # ==========================================
-  # Networking
-  # ==========================================
-  VPC:
-    Type: AWS::EC2::VPC
-    Properties:
-      CidrBlock: !Ref VpcCIDR
-      EnableDnsSupport: true
-      EnableDnsHostnames: true
-      Tags:
-        - Key: Name
-          Value: !Sub ${EnvironmentName}-vpc
-
-  InternetGateway:
-    Type: AWS::EC2::InternetGateway
-
-  VPCGatewayAttachment:
-    Type: AWS::EC2::VPCGatewayAttachment
-    Properties:
-      VpcId: !Ref VPC
-      InternetGatewayId: !Ref InternetGateway
-
-  PublicSubnet1:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPC
-      CidrBlock: 10.0.1.0/24
-      AvailabilityZone: !Select [ 0, !GetAZs '' ]
-      MapPublicIpOnLaunch: true
-      Tags:
-        - Key: Name
-          Value: !Sub ${EnvironmentName}-pub-subnet-1
-
-  PublicSubnet2:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VPC
-      CidrBlock: 10.0.2.0/24
-      AvailabilityZone: !Select [ 1, !GetAZs '' ]
-      MapPublicIpOnLaunch: true
-      Tags:
-        - Key: Name
-          Value: !Sub ${EnvironmentName}-pub-subnet-2
-
-  PublicRouteTable:
-    Type: AWS::EC2::RouteTable
-    Properties:
-      VpcId: !Ref VPC
-
-  PublicRoute:
-    Type: AWS::EC2::Route
-    DependsOn: VPCGatewayAttachment
-    Properties:
-      RouteTableId: !Ref PublicRouteTable
-      DestinationCidrBlock: 0.0.0.0/0
-      GatewayId: !Ref InternetGateway
-
-  SubnetRouteTableAssociation1:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      SubnetId: !Ref PublicSubnet1
-      RouteTableId: !Ref PublicRouteTable
-
-  SubnetRouteTableAssociation2:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      SubnetId: !Ref PublicSubnet2
-      RouteTableId: !Ref PublicRouteTable
-
-  # ==========================================
   # Security Groups
   # ==========================================
   ALBSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Enable HTTP/HTTPS access to ALB
-      VpcId: !Ref VPC
+      GroupDescription: Enable HTTP/HTTPS access to Internal ALB
+      VpcId: !Ref VpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 80
           ToPort: 80
-          CidrIp: 0.0.0.0/0
+          CidrIp: 0.0.0.0/0 # Open to entire VPC/VPN (since ALB is internal)
         - IpProtocol: tcp
           FromPort: 443
           ToPort: 443
@@ -130,7 +67,7 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Enable access to Web Server from ALB
-      VpcId: !Ref VPC
+      VpcId: !Ref VpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 80
@@ -139,13 +76,13 @@ Resources:
         - IpProtocol: tcp
           FromPort: 22
           ToPort: 22
-          CidrIp: 0.0.0.0/0 # Restrict this in production!
+          CidrIp: 0.0.0.0/0 # Restrict this to your VPN IP in production!
 
   DBSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Enable access to DB from Web Server
-      VpcId: !Ref VPC
+      VpcId: !Ref VpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 5432
@@ -159,9 +96,7 @@ Resources:
     Type: AWS::RDS::DBSubnetGroup
     Properties:
       DBSubnetGroupDescription: Subnets for RDS
-      SubnetIds:
-        - !Ref PublicSubnet1
-        - !Ref PublicSubnet2
+      SubnetIds: !Ref SubnetIds
 
   PostgresDB:
     Type: AWS::RDS::DBInstance
@@ -178,7 +113,7 @@ Resources:
         - !Ref DBSecurityGroup
       DBSubnetGroupName: !Ref DBSubnetGroup
       PubliclyAccessible: false
-      MultiAZ: false # Set to true for high availability
+      MultiAZ: false
 
   # ==========================================
   # Load Balancer (ALB)
@@ -187,10 +122,8 @@ Resources:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
       Name: !Sub ${EnvironmentName}-alb
-      Scheme: internet-facing
-      Subnets:
-        - !Ref PublicSubnet1
-        - !Ref PublicSubnet2
+      Scheme: internal
+      Subnets: !Ref SubnetIds
       SecurityGroups:
         - !Ref ALBSecurityGroup
 
@@ -200,7 +133,7 @@ Resources:
       Name: !Sub ${EnvironmentName}-tg
       Port: 80
       Protocol: HTTP
-      VpcId: !Ref VPC
+      VpcId: !Ref VpcId
       HealthCheckPath: /health
       HealthCheckIntervalSeconds: 30
       TargetType: instance
@@ -251,7 +184,7 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
         - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
-        - arn:aws:iam::aws:policy/AmazonS3FullAccess # Adjust scope as needed
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
 
   EC2InstanceProfile:
     Type: AWS::IAM::InstanceProfile
@@ -286,7 +219,7 @@ Resources:
     Properties:
       LaunchTemplateName: !Sub ${EnvironmentName}-launch-template
       LaunchTemplateData:
-        ImageId: ami-0c7217cdde317cfec # Ubuntu 22.04 LTS (us-east-1) - UPDATE FOR YOUR REGION
+        ImageId: ami-0c7217cdde317cfec # Ubuntu 22.04 LTS (us-east-1)
         InstanceType: t3.medium
         KeyName: !Ref KeyName
         IamInstanceProfile:
@@ -349,9 +282,7 @@ Resources:
       MinSize: 1
       MaxSize: 3
       DesiredCapacity: 1
-      VPCZoneIdentifier:
-        - !Ref PublicSubnet1
-        - !Ref PublicSubnet2
+      VPCZoneIdentifier: !Ref SubnetIds
       TargetGroupARNs:
         - !Ref TargetGroup
       HealthCheckType: ELB
@@ -368,7 +299,7 @@ Resources:
 
 Outputs:
   LoadBalancerDNS:
-    Description: DNS Name of the Load Balancer
+    Description: DNS Name of the Internal Load Balancer
     Value: !GetAtt LoadBalancer.DNSName
 
   DBEndpoint:
