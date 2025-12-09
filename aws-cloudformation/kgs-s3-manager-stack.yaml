@@ -18,7 +18,8 @@ Parameters:
 
   CertificateArn:
     Type: String
-    Description: ARN of the ACM Certificate for the Load Balancer (SSL)
+    Description: (Optional) ARN of the ACM Certificate. Leave empty if you don't have a domain yet (will use HTTP only).
+    Default: ""
 
   DBPassword:
     Type: String
@@ -33,6 +34,9 @@ Parameters:
   TrustAnchorCertData:
     Type: String
     Description: PEM encoded certificate data for the IAM Roles Anywhere Trust Anchor (The CA Certificate)
+
+Conditions:
+  HasCertificate: !Not [!Equals [!Ref CertificateArn, ""]]
 
 Resources:
   # ==========================================
@@ -208,14 +212,19 @@ Resources:
       Port: 80
       Protocol: HTTP
       DefaultActions:
-        - Type: redirect
-          RedirectConfig:
-            Protocol: HTTPS
-            Port: 443
-            StatusCode: HTTP_301
+        - !If
+          - HasCertificate
+          - Type: redirect
+            RedirectConfig:
+              Protocol: HTTPS
+              Port: 443
+              StatusCode: HTTP_301
+          - Type: forward
+            TargetGroupArn: !Ref TargetGroup
 
   HTTPSListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
+    Condition: HasCertificate
     Properties:
       LoadBalancerArn: !Ref LoadBalancer
       Port: 443
@@ -316,6 +325,7 @@ Resources:
             POSTGRES_USER=s3manager
             POSTGRES_PASSWORD=${DBPassword}
             POSTGRES_DB=s3manager
+            DATABASE_URL=postgresql://s3manager:${DBPassword}@${PostgresDB.Endpoint.Address}:5432/s3manager
             
             # AWS
             AWS_REGION=${AWS::Region}

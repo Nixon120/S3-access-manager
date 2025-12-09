@@ -10,7 +10,7 @@ import {
 } from '@mui/material';
 import { authAPI } from '../services/api';
 
-export default function ChangePasswordDialog({ open, onClose }) {
+export default function ChangePasswordDialog({ open, onClose, forced = false }) {
     const [currentPassword, setCurrentPassword] = useState('');
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
@@ -38,11 +38,16 @@ export default function ChangePasswordDialog({ open, onClose }) {
             await authAPI.changePassword(currentPassword, newPassword);
             setSuccess('Password updated successfully');
             setTimeout(() => {
-                onClose();
-                setCurrentPassword('');
-                setNewPassword('');
-                setConfirmPassword('');
-                setSuccess('');
+                // If forced, we might want to reload the page or update user context
+                // But for now, just closing is fine as the backend updated the flag
+                // and the parent component will re-evaluate user state if it fetches it
+                // Actually, we need to ensure the parent knows the user state changed.
+                // Since we don't have a way to refresh user here easily without context,
+                // we rely on the fact that the next navigation or refresh will show correct state.
+                // But ideally, we should call a refreshUser function.
+                // For now, let's just close. The Layout effect might re-open it if user state isn't updated.
+                // To fix this, we should reload the page to get fresh user data.
+                window.location.reload();
             }, 1500);
         } catch (err) {
             setError(err.response?.data?.detail || 'Failed to update password');
@@ -52,10 +57,17 @@ export default function ChangePasswordDialog({ open, onClose }) {
     };
 
     return (
-        <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-            <DialogTitle>Change Password</DialogTitle>
+        <Dialog open={open} onClose={forced ? undefined : onClose} maxWidth="sm" fullWidth>
+            <DialogTitle>
+                {forced ? 'Change Password Required' : 'Change Password'}
+            </DialogTitle>
             <form onSubmit={handleSubmit}>
                 <DialogContent>
+                    {forced && (
+                        <Alert severity="warning" sx={{ mb: 2 }}>
+                            You must change your password before continuing.
+                        </Alert>
+                    )}
                     {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
                     {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
 
@@ -89,7 +101,7 @@ export default function ChangePasswordDialog({ open, onClose }) {
                     />
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={onClose}>Cancel</Button>
+                    {!forced && <Button onClick={onClose}>Cancel</Button>}
                     <Button
                         type="submit"
                         variant="contained"

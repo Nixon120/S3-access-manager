@@ -222,6 +222,23 @@ class S3Service:
                 "message": str(e)
             }
 
+    def delete_object(
+        self,
+        bucket_name: str,
+        object_key: str,
+        connection: Optional[S3Connection] = None
+    ) -> None:
+        """Delete an object from S3"""
+        try:
+            client = self.get_client(connection)
+            client.delete_object(
+                Bucket=bucket_name,
+                Key=object_key
+            )
+        except ClientError as e:
+            logger.error(f"Error deleting object: {e}")
+            raise
+
 
 # Singleton instance
 s3_service = S3Service()

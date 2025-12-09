@@ -39,6 +39,13 @@ export default function Layout({ children }) {
   const location = useLocation();
   const { user, logout, isAdmin } = useAuth();
 
+  // Effect to check if password reset is needed
+  React.useEffect(() => {
+    if (user?.must_change_password) {
+      setChangePasswordOpen(true);
+    }
+  }, [user]);
+
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
   };
@@ -57,6 +64,13 @@ export default function Layout({ children }) {
     navigate('/login');
   };
 
+  const handleChangePasswordClose = () => {
+    if (user?.must_change_password) {
+      return;
+    }
+    setChangePasswordOpen(false);
+  };
+
   const menuItems = [
     { text: 'Dashboard', icon: <DashboardIcon />, path: '/', admin: false },
     { text: 'Users', icon: <PeopleIcon />, path: '/users', admin: true },
@@ -67,11 +81,13 @@ export default function Layout({ children }) {
 
   const drawer = (
     <div>
-      <Toolbar>
-        <CloudIcon sx={{ mr: 1, color: 'primary.main' }} />
-        <Typography variant="h6" noWrap>
-          KGS S3 Manager
-        </Typography>
+      <Toolbar sx={{ justifyContent: 'center', py: 1 }}>
+        <Box
+          component="img"
+          src="/logo.png"
+          alt="KGS"
+          sx={{ maxWidth: '160px', height: 'auto' }}
+        />
       </Toolbar>
       <Divider />
       <List>
@@ -146,7 +162,8 @@ export default function Layout({ children }) {
 
       <ChangePasswordDialog
         open={changePasswordOpen}
-        onClose={() => setChangePasswordOpen(false)}
+        onClose={handleChangePasswordClose}
+        forced={user?.must_change_password}
       />
 
       <Box

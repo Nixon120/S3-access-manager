@@ -369,7 +369,7 @@ async def delete_object(
     """
     # Check delete permission
     try:
-        permission_service.check_permission(
+        permission = permission_service.check_permission(
             db=db,
             user=current_user,
             bucket_name=bucket_name,
@@ -390,19 +390,27 @@ async def delete_object(
         )
         raise
     
+    # Get S3 connection if permission specifies one
+    s3_connection = None
+    if permission and permission.s3_connection_id:
+        from app.models.s3_connection import S3Connection
+        s3_connection = db.query(S3Connection).filter(
+            S3Connection.id == permission.s3_connection_id
+        ).first()
+    
     try:
-        # Generate presigned DELETE URL
-        url = s3_service.generate_presigned_url(
+        # Delete object directly
+        s3_service.delete_object(
             bucket_name=bucket_name,
             object_key=object_key,
-            operation="delete_object"
+            connection=s3_connection
         )
         
-        # Log successful generation
+        # Log successful deletion
         audit_service.log_action(
             db=db,
             user=current_user,
-            action="delete_initiated",
+            action="delete",
             bucket_name=bucket_name,
             object_key=object_key,
             status="success",
@@ -410,8 +418,7 @@ async def delete_object(
         )
         
         return {
-            "url": url,
-            "message": "Use this URL to delete the object"
+            "message": "Object deleted successfully"
         }
     
     except Exception as e:

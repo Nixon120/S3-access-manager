@@ -28,6 +28,7 @@ class UserResponse(UserBase):
     id: int
     is_active: bool
     is_admin: bool
+    must_change_password: bool
     created_at: datetime
     last_login: Optional[datetime] = None
 

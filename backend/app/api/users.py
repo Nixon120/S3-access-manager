@@ -69,7 +69,8 @@ async def create_user(
         full_name=user_data.full_name,
         hashed_password=get_password_hash(user_data.password),
         is_admin=user_data.is_admin,
-        is_active=True
+        is_active=True,
+        must_change_password=True
     )
     
     db.add(new_user)
@@ -115,6 +116,7 @@ async def update_user(
     
     if user_data.password is not None:
         user.hashed_password = get_password_hash(user_data.password)
+        user.must_change_password = True
     
     if user_data.is_active is not None:
         user.is_active = user_data.is_active

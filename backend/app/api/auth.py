@@ -127,6 +127,7 @@ async def change_password(
         )
     
     current_user.hashed_password = get_password_hash(password_data.new_password)
+    current_user.must_change_password = False
     db.commit()
     
     return {"message": "Password changed successfully"}

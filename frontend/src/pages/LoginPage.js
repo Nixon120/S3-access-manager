@@ -51,9 +51,14 @@ export default function LoginPage() {
         <Card sx={{ width: '100%', boxShadow: 3 }}>
           <CardContent sx={{ p: 4 }}>
             <Box sx={{ textAlign: 'center', mb: 3 }}>
-              <CloudIcon sx={{ fontSize: 60, color: 'primary.main', mb: 2 }} />
-              <Typography variant="h4" component="h1" gutterBottom>
-                KGS S3 Manager
+              <Box
+                component="img"
+                src="/logo.png"
+                alt="KGS Logo"
+                sx={{ maxWidth: '280px', height: 'auto', mb: 2 }}
+              />
+              <Typography variant="h5" component="h1" gutterBottom>
+                S3 Access Manager
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Sign in to access your S3 resources
