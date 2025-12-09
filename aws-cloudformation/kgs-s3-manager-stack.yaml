@@ -37,10 +37,6 @@ Parameters:
     Default: https://github.com/Nixon120/S3-access-manager.git
     Description: Git repository URL (Use https://user:token@github.com/... for private repos)
 
-  TrustAnchorCertData:
-    Type: String
-    Description: PEM encoded certificate data for the IAM Roles Anywhere Trust Anchor
-
 Conditions:
   HasCertificate: !Not [!Equals [!Ref CertificateArn, ""]]
 
@@ -169,7 +165,7 @@ Resources:
           TargetGroupArn: !Ref TargetGroup
 
   # ==========================================
-  # IAM Roles & Roles Anywhere
+  # IAM Roles
   # ==========================================
   EC2Role:
     Type: AWS::IAM::Role
@@ -191,25 +187,6 @@ Resources:
     Properties:
       Roles:
         - !Ref EC2Role
-
-  RolesAnywhereTrustAnchor:
-    Type: AWS::RolesAnywhere::TrustAnchor
-    Properties:
-      Name: !Sub ${EnvironmentName}-trust-anchor
-      Source:
-        SourceData:
-          X509CertificateData: !Ref TrustAnchorCertData
-        SourceType: CERTIFICATE_BUNDLE
-      Enabled: true
-
-  RolesAnywhereProfile:
-    Type: AWS::RolesAnywhere::Profile
-    Properties:
-      Name: !Sub ${EnvironmentName}-profile
-      RoleArns:
-        - !GetAtt EC2Role.Arn
-      DurationSeconds: 3600
-      Enabled: true
 
   # ==========================================
   # Auto Scaling Group (ASG)
