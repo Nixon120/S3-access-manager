@@ -12,6 +12,10 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     password: str = Field(..., min_length=8)
     is_admin: bool = False
+    can_manage_users: bool = False
+    can_manage_s3: bool = False
+    can_manage_permissions: bool = False
+    can_view_audit: bool = False
 
 
 class UserUpdate(BaseModel):
@@ -20,6 +24,10 @@ class UserUpdate(BaseModel):
     password: Optional[str] = Field(None, min_length=8)
     is_active: Optional[bool] = None
     is_admin: Optional[bool] = None
+    can_manage_users: Optional[bool] = None
+    can_manage_s3: Optional[bool] = None
+    can_manage_permissions: Optional[bool] = None
+    can_view_audit: Optional[bool] = None
 
 
 class UserResponse(UserBase):
@@ -29,6 +37,10 @@ class UserResponse(UserBase):
     is_active: bool
     is_admin: bool
     must_change_password: bool
+    can_manage_users: bool
+    can_manage_s3: bool
+    can_manage_permissions: bool
+    can_view_audit: bool
     created_at: datetime
     last_login: Optional[datetime] = None
 

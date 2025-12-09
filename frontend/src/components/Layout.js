@@ -73,10 +73,10 @@ export default function Layout({ children }) {
 
   const menuItems = [
     { text: 'Dashboard', icon: <DashboardIcon />, path: '/', admin: false },
-    { text: 'Users', icon: <PeopleIcon />, path: '/users', admin: true },
-    { text: 'S3 Connections', icon: <CloudIcon />, path: '/s3-connections', admin: true },
-    { text: 'Permissions', icon: <SecurityIcon />, path: '/permissions', admin: true },
-    { text: 'Audit Logs', icon: <HistoryIcon />, path: '/audit', admin: true },
+    { text: 'Users', icon: <PeopleIcon />, path: '/users', admin: true, permission: 'can_manage_users' },
+    { text: 'S3 Connections', icon: <CloudIcon />, path: '/s3-connections', admin: true, permission: 'can_manage_s3' },
+    { text: 'Permissions', icon: <SecurityIcon />, path: '/permissions', admin: true, permission: 'can_manage_permissions' },
+    { text: 'Audit Logs', icon: <HistoryIcon />, path: '/audit', admin: true, permission: 'can_view_audit' },
   ];
 
   const drawer = (
@@ -92,7 +92,12 @@ export default function Layout({ children }) {
       <Divider />
       <List>
         {menuItems
-          .filter((item) => !item.admin || isAdmin)
+          .filter((item) => {
+            if (!item.admin) return true;
+            if (!isAdmin) return false;
+            if (item.permission && !user?.[item.permission]) return false;
+            return true;
+          })
           .map((item) => (
             <ListItem key={item.text} disablePadding>
               <ListItemButton

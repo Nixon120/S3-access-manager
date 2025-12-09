@@ -34,6 +34,10 @@ export default function UsersPage() {
     full_name: '',
     password: '',
     is_admin: false,
+    can_manage_users: false,
+    can_manage_s3: false,
+    can_manage_permissions: false,
+    can_view_audit: false,
   });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -60,6 +64,10 @@ export default function UsersPage() {
       full_name: '',
       password: '',
       is_admin: false,
+      can_manage_users: false,
+      can_manage_s3: false,
+      can_manage_permissions: false,
+      can_view_audit: false,
     });
     setDialogOpen(true);
   };
@@ -71,6 +79,10 @@ export default function UsersPage() {
       full_name: user.full_name,
       password: '',
       is_admin: user.is_admin,
+      can_manage_users: user.can_manage_users || false,
+      can_manage_s3: user.can_manage_s3 || false,
+      can_manage_permissions: user.can_manage_permissions || false,
+      can_view_audit: user.can_view_audit || false,
     });
     setDialogOpen(true);
   };
@@ -240,6 +252,30 @@ export default function UsersPage() {
             }
             label="Administrator"
           />
+
+          {formData.is_admin && (
+            <Box sx={{ ml: 4, mt: 1 }}>
+              <Typography variant="subtitle2" gutterBottom>Admin Permissions:</Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                <FormControlLabel
+                  control={<Checkbox checked={formData.can_manage_users} onChange={(e) => setFormData({ ...formData, can_manage_users: e.target.checked })} />}
+                  label="Manage Users"
+                />
+                <FormControlLabel
+                  control={<Checkbox checked={formData.can_manage_s3} onChange={(e) => setFormData({ ...formData, can_manage_s3: e.target.checked })} />}
+                  label="Manage S3 Connections"
+                />
+                <FormControlLabel
+                  control={<Checkbox checked={formData.can_manage_permissions} onChange={(e) => setFormData({ ...formData, can_manage_permissions: e.target.checked })} />}
+                  label="Manage Permissions"
+                />
+                <FormControlLabel
+                  control={<Checkbox checked={formData.can_view_audit} onChange={(e) => setFormData({ ...formData, can_view_audit: e.target.checked })} />}
+                  label="View Audit Logs"
+                />
+              </Box>
+            </Box>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDialogOpen(false)}>Cancel</Button>

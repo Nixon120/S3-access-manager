@@ -70,7 +70,11 @@ async def create_user(
         hashed_password=get_password_hash(user_data.password),
         is_admin=user_data.is_admin,
         is_active=True,
-        must_change_password=True
+        must_change_password=True,
+        can_manage_users=user_data.can_manage_users,
+        can_manage_s3=user_data.can_manage_s3,
+        can_manage_permissions=user_data.can_manage_permissions,
+        can_view_audit=user_data.can_view_audit
     )
     
     db.add(new_user)
@@ -123,6 +127,15 @@ async def update_user(
     
     if user_data.is_admin is not None:
         user.is_admin = user_data.is_admin
+    
+    if user_data.can_manage_users is not None:
+        user.can_manage_users = user_data.can_manage_users
+    if user_data.can_manage_s3 is not None:
+        user.can_manage_s3 = user_data.can_manage_s3
+    if user_data.can_manage_permissions is not None:
+        user.can_manage_permissions = user_data.can_manage_permissions
+    if user_data.can_view_audit is not None:
+        user.can_view_audit = user_data.can_view_audit
     
     db.commit()
     db.refresh(user)
